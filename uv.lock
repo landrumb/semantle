@@ -36,6 +36,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pybind11"
+version = "2.13.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/c1/72b9622fcb32ff98b054f724e213c7f70d6898baa714f4516288456ceaba/pybind11-2.13.6.tar.gz", hash = "sha256:ba6af10348c12b24e92fa086b39cfba0eff619b61ac77c406167d813b096d39a", size = 218403 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/2f/0f24b288e2ce56f51c920137620b4434a38fd80583dbbe24fc2a1656c388/pybind11-2.13.6-py3-none-any.whl", hash = "sha256:237c41e29157b962835d356b370ededd57594a26d5894a795960f0047cb5caf5", size = 243282 },
+]
+
+[[package]]
 name = "scipy"
 version = "1.13.1"
 source = { registry = "https://pypi.org/simple" }
@@ -58,10 +67,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "gensim" },
+    { name = "pybind11" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "gensim", specifier = ">=4.3.3" }]
+requires-dist = [
+    { name = "gensim", specifier = ">=4.3.3" },
+    { name = "pybind11", specifier = ">=2.13.6" },
+]
 
 [[package]]
 name = "smart-open"
