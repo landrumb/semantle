@@ -1,6 +1,7 @@
 """misc utility functions"""
 
 import numpy as np
+from pathlib import Path
 
 def numpy_to_fbin(vectors, fbin_path):
     """writes a 2d numpy array to a .fbin file"""
@@ -31,3 +32,18 @@ def graph_file_to_list_of_lists(graph_file):
         
         return out_neighborhoods
     
+def read_vocab(vocab_dir):
+    """returns a word_to_idx dict and idx_to_word list from a vocab directory"""
+    if type(vocab_dir) == str:
+        vocab_dir = Path(vocab_dir)
+    
+    word_to_idx = {}
+    idx_to_word = []
+    
+    with open(vocab_dir / "vocab.txt") as file:
+        for idx, line in enumerate(file):
+            word = line.strip()
+            word_to_idx[word] = idx
+            idx_to_word.append(word)
+            
+    return word_to_idx, idx_to_word
