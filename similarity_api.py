@@ -73,4 +73,4 @@ def get_neighbors():
     return jsonify({"neighbors": neighbors})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
