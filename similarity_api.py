@@ -3,22 +3,17 @@ from flask_cors import CORS
 from pathlib import Path
 from utils import fbin_to_numpy, graph_file_to_list_of_lists, read_vocab
 import numpy as np
+import subprocess
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})  # enable cross-origin requests
 
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify({"message": "CORS preflight successful"})
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        return response
-
 MODEL = "word2vec-google-news-300_50000_lowercase"
 
 data_dir = Path("data") / MODEL
+
+if not data_dir.exists():
+    subprocess.run(["bash", "remote_setup.sh"], check=True)
 
 print("loading vectors...")
 vectors = fbin_to_numpy(data_dir / "base.fbin")
@@ -73,4 +68,4 @@ def get_neighbors():
     return jsonify({"neighbors": neighbors})
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
