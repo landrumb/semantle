@@ -15,15 +15,23 @@ def words_to_file(words, file_path):
     
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python embeddings_to_fbin.py <gensim embedding name>")
+        print("Usage: python embeddings_to_fbin.py <gensim embedding name> [crop length]")
         sys.exit(1)
         
     embeddings = sys.argv[1]
     
-    if Path(f"data/{embeddings}").exists():
-        print("Embeddings already downloaded, but running again.")
+    if len(sys.argv) > 2:
+        crop_length = int(sys.argv[2])
+    else:
+        crop_length = None
     
     download_dir = Path(f"data/{embeddings}")
+    if crop_length is not None:
+        download_dir = Path(f"data/{embeddings}_{crop_length}")
+    
+    if download_dir.exists():
+        print("Embeddings already downloaded, but running again.")
+    
     download_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Downloading {embeddings}...")
@@ -31,13 +39,23 @@ if __name__ == "__main__":
     vectors = model.vectors
     vocab = model.index_to_key
     
+    if crop_length is not None:
+        print(f"Cropping to {crop_length} words...")
+        vectors = vectors[:crop_length]
+        vocab = vocab[:crop_length]
+    
+    # normalize vectors
+    vectors /= np.linalg.norm(vectors, axis=1)[:, None]
+    
     print("Saving embeddings...")
     numpy_to_fbin(vectors, download_dir / "base.fbin")
     words_to_file(vocab, download_dir / "vocab.txt")
     
-    nq = 10000
+    nq = 5000
     print(f"Saving {nq} queries...")
-    query_indices = np.random.choice(min(len(vocab) // 50, 30000), nq, replace=False)
+    query_indices = np.random.choice(len(vocab), nq, replace=False)
+    query_indices.sort()
+    
     query_words = [vocab[i] for i in query_indices]
     query_vectors = vectors[query_indices]
     
@@ -55,6 +73,6 @@ if __name__ == "__main__":
                     "-query_path", download_dir / "query.fbin",
                     "-gt_path", download_dir / "GT",
                     "-k", "1000",
-                    "-dist_func", "Euclidian",
+                    "-dist_func", "mips",
                     "-data_type", "float"])
     
