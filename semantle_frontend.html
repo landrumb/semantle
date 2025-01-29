@@ -29,15 +29,23 @@
     <script>
         let targetWord = "";
         let guesses = [];
+        // Cache for storing similarity data: guessDataCache[word] = { similarity, rank }
+        let guessDataCache = {};
+        // Cache for storing neighbor lists: neighborsCache[word] = [neighbor1, neighbor2, ...]
+        let neighborsCache = {};
 
         function saveState() {
             localStorage.setItem("targetWord", targetWord);
             localStorage.setItem("guesses", JSON.stringify(guesses));
+            localStorage.setItem("guessDataCache", JSON.stringify(guessDataCache));
+            localStorage.setItem("neighborsCache", JSON.stringify(neighborsCache));
         }
 
         function loadState() {
             targetWord = localStorage.getItem("targetWord") || "";
             guesses = JSON.parse(localStorage.getItem("guesses")) || [];
+            guessDataCache = JSON.parse(localStorage.getItem("guessDataCache")) || {};
+            neighborsCache = JSON.parse(localStorage.getItem("neighborsCache")) || {};
             if (!targetWord) {
                 startGame();
             } else {
@@ -46,11 +54,13 @@
         }
 
         async function startGame() {
-            let res = await fetch("http://127.0.0.1:5000/get_vocab");
+            let res = await fetch("https://semantle-graph.onrender.com/get_vocab");
             let data = await res.json();
             let vocab = data.vocab;
             targetWord = vocab[Math.floor(Math.random() * vocab.length)];
             guesses = [];
+            guessDataCache = {};
+            neighborsCache = {};
             saveState();
             document.getElementById("guesses").innerHTML = "";
             document.getElementById("highlightedGuesses").innerHTML = "";
@@ -63,69 +73,163 @@
             if (!guessWord) return alert("Enter a word!");
             if (guesses.some(g => g.word === guessWord)) return alert("You already guessed this word!");
 
-            let similarityRes = await fetch("http://127.0.0.1:5000/similarity", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ word1: targetWord, word2: guessWord })
-            });
-            let similarityData = await similarityRes.json();
-            if (similarityData.error) {
-                alert(similarityData.error);
-                return;
+            // If in cache, skip re-fetch
+            let similarity, rank;
+            if (guessDataCache[guessWord]) {
+                similarity = guessDataCache[guessWord].similarity;
+                rank = guessDataCache[guessWord].rank;
+            } else {
+                let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word1: targetWord, word2: guessWord })
+                });
+                let simData = await simRes.json();
+                if (simData.error) {
+                    alert(simData.error);
+                    return;
+                }
+                similarity = simData.similarity;
+
+                let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word: guessWord, k: 1000 })
+                });
+                let topKData = await topKRes.json();
+                rank = topKData.top_words.indexOf(guessWord);
+
+                guessDataCache[guessWord] = { similarity, rank };
             }
 
-            let topKRes = await fetch("http://127.0.0.1:5000/top_k", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ word: guessWord, k: 1000 })
-            });
-            let topKData = await topKRes.json();
-            let rank = topKData.top_words.indexOf(guessWord);
-
-            guesses.push({ word: guessWord, similarity: similarityData.similarity, rank });
+            guesses.push({ word: guessWord, similarity, rank });
             guesses.sort((a, b) => b.similarity - a.similarity);
             saveState();
             renderGuesses();
             refreshNeighborColors();
 
             if (guessWord === targetWord) alert(`🎉 You guessed the word! It was "${targetWord}"`);
+
+            // Prefetch neighbors in the background (for faster future display)
+            prefetchNeighbors(guessWord);
         }
 
         function renderGuesses() {
             let topGuesses = guesses.filter(g => g.rank > 0 && g.rank <= 1000);
             let otherGuesses = guesses.filter(g => g.rank === 0 || g.rank > 1000);
             
-            let highlightedGuesses = topGuesses.length > 0 ?
-                `<div class="highlight-container">` +
-                topGuesses.map((g, i) => `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)} (Rank: ${g.rank})</div>`).join("") +
-                `</div>` : "";
+            let highlightedGuesses = topGuesses.length > 0
+                ? `<div class="highlight-container">` +
+                  topGuesses.map((g, i) =>
+                    `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)} (Rank: ${g.rank})</div>`
+                  ).join("") +
+                  `</div>`
+                : "";
 
-            let otherGuessesHtml = otherGuesses.map((g, i) => `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1 + topGuesses.length}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)}</div>`).join("");
+            let otherGuessesHtml = otherGuesses.map((g, i) =>
+                `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1 + topGuesses.length}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)}</div>`
+            ).join("");
             
             document.getElementById("highlightedGuesses").innerHTML = highlightedGuesses;
             document.getElementById("guesses").innerHTML = otherGuessesHtml;
         }
 
-        async function fetchNeighbors(word) {
-            let res = await fetch("http://127.0.0.1:5000/neighbors", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ word })
-            });
-            let data = await res.json();
-            if (data.error) {
-                alert(data.error);
-                return;
+        // Fetch neighbors in the background, store them in neighborsCache
+        async function prefetchNeighbors(word) {
+            // If we already have neighbors for this word, skip
+            if (neighborsCache[word]) return;
+            try {
+                let res = await fetch("https://semantle-graph.onrender.com/neighbors", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word })
+                });
+                let data = await res.json();
+                if (!data.error) {
+                    neighborsCache[word] = data.neighbors;
+                    saveState();
+                }
+            } catch (e) {
+                // ignore
             }
-            document.getElementById("neighbors").innerHTML = `<div class="neighbors">Neighbors of <b>${word}</b>: ` +
-                data.neighbors.map(n => `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`).join(" ") + `</div>`;
+        }
+
+        // Show neighbors in UI, then prefetch their similarities
+        async function fetchNeighbors(word) {
+            // If neighbors already cached, render immediately
+            if (neighborsCache[word]) {
+                renderNeighbors(word, neighborsCache[word]);
+                // Prefetch similarities in background
+                prefetchNeighborSimilarities(neighborsCache[word]);
+            } else {
+                // Otherwise, fetch fresh neighbors, show them, then prefetch similarities
+                try {
+                    let res = await fetch("https://semantle-graph.onrender.com/neighbors", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ word })
+                    });
+                    let data = await res.json();
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    neighborsCache[word] = data.neighbors;
+                    renderNeighbors(word, data.neighbors);
+                    saveState();
+                    prefetchNeighborSimilarities(data.neighbors);
+                } catch (e) {
+                    alert("Error fetching neighbors: " + e);
+                }
+            }
+        }
+
+        function renderNeighbors(word, neighborList) {
+            // Render immediately
+            document.getElementById("neighbors").innerHTML =
+                `<div class="neighbors">Neighbors of <b>${word}</b>: ` +
+                neighborList.map(n => `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`).join(" ") +
+                `</div>`;
             refreshNeighborColors();
+        }
+
+        // Prefetch similarity info for each neighbor in the background
+        async function prefetchNeighborSimilarities(neighborList) {
+            for (let n of neighborList) {
+                if (!guessDataCache[n]) {
+                    // Fire off requests in parallel, no need to await each before the next
+                    (async () => {
+                        try {
+                            let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ word1: targetWord, word2: n })
+                            });
+                            let simData = await simRes.json();
+                            if (simData.error) return;
+
+                            let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ word: n, k: 1000 })
+                            });
+                            let topKData = await topKRes.json();
+                            let rank = topKData.top_words.indexOf(n);
+
+                            guessDataCache[n] = { similarity: simData.similarity, rank };
+                            saveState();
+                        } catch (e) {
+                            // swallow
+                        }
+                    })();
+                }
+            }
         }
 
         function refreshNeighborColors() {
             document.querySelectorAll(".neighbor").forEach(neighbor => {
-                let word = neighbor.textContent;
-                neighbor.className = "neighbor " + (guesses.some(g => g.word === word) ? "guessed" : "not-guessed");
+                let w = neighbor.textContent;
+                neighbor.className = "neighbor " + (guesses.some(g => g.word === w) ? "guessed" : "not-guessed");
             });
         }
 
