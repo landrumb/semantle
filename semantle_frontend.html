@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vamana Semantle</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        input, button { padding: 10px; margin: 5px; }
+        .guess { margin: 10px 0; cursor: pointer; color: black; text-decoration: underline; }
+        .latest-guess { font-weight: bold; color: red; }
+        .highlight-container { background-color: lightgray; padding: 10px; margin: 10px auto; display: inline-block; }
+        .neighbors { margin-top: 10px; }
+        .neighbor { cursor: pointer; text-decoration: underline; display: inline-block; margin: 5px; }
+        .neighbor.guessed { color: red; }
+        .neighbor.not-guessed { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Semantle Game</h1>
+    <button onclick="startGame()">Start New Game</button>
+    <input type="text" id="guessInput" placeholder="Enter a word">
+    <button onclick="makeGuess()">Guess</button>
+    
+    <div id="neighbors"></div>
+    <div id="highlightedGuesses"></div>
+    <div id="guesses"></div>
+
+    <script>
+        let targetWord = "";
+        let guesses = [];
+
+        function saveState() {
+            localStorage.setItem("targetWord", targetWord);
+            localStorage.setItem("guesses", JSON.stringify(guesses));
+        }
+
+        function loadState() {
+            targetWord = localStorage.getItem("targetWord") || "";
+            guesses = JSON.parse(localStorage.getItem("guesses")) || [];
+            if (!targetWord) {
+                startGame();
+            } else {
+                renderGuesses();
+            }
+        }
+
+        async function startGame() {
+            let res = await fetch("http://127.0.0.1:5000/get_vocab");
+            let data = await res.json();
+            let vocab = data.vocab;
+            targetWord = vocab[Math.floor(Math.random() * vocab.length)];
+            guesses = [];
+            saveState();
+            document.getElementById("guesses").innerHTML = "";
+            document.getElementById("highlightedGuesses").innerHTML = "";
+            document.getElementById("neighbors").innerHTML = "";
+            alert("New game started! A word has been chosen.");
+        }
+
+        async function makeGuess(word = null) {
+            let guessWord = word || document.getElementById("guessInput").value.toLowerCase();
+            if (!guessWord) return alert("Enter a word!");
+            if (guesses.some(g => g.word === guessWord)) return alert("You already guessed this word!");
+
+            let similarityRes = await fetch("http://127.0.0.1:5000/similarity", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ word1: targetWord, word2: guessWord })
+            });
+            let similarityData = await similarityRes.json();
+            if (similarityData.error) {
+                alert(similarityData.error);
+                return;
+            }
+
+            let topKRes = await fetch("http://127.0.0.1:5000/top_k", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ word: guessWord, k: 1000 })
+            });
+            let topKData = await topKRes.json();
+            let rank = topKData.top_words.indexOf(guessWord);
+
+            guesses.push({ word: guessWord, similarity: similarityData.similarity, rank });
+            guesses.sort((a, b) => b.similarity - a.similarity);
+            saveState();
+            renderGuesses();
+            refreshNeighborColors();
+
+            if (guessWord === targetWord) alert(`🎉 You guessed the word! It was "${targetWord}"`);
+        }
+
+        function renderGuesses() {
+            let topGuesses = guesses.filter(g => g.rank > 0 && g.rank <= 1000);
+            let otherGuesses = guesses.filter(g => g.rank === 0 || g.rank > 1000);
+            
+            let highlightedGuesses = topGuesses.length > 0 ?
+                `<div class="highlight-container">` +
+                topGuesses.map((g, i) => `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)} (Rank: ${g.rank})</div>`).join("") +
+                `</div>` : "";
+
+            let otherGuessesHtml = otherGuesses.map((g, i) => `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1 + topGuesses.length}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)}</div>`).join("");
+            
+            document.getElementById("highlightedGuesses").innerHTML = highlightedGuesses;
+            document.getElementById("guesses").innerHTML = otherGuessesHtml;
+        }
+
+        async function fetchNeighbors(word) {
+            let res = await fetch("http://127.0.0.1:5000/neighbors", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ word })
+            });
+            let data = await res.json();
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            document.getElementById("neighbors").innerHTML = `<div class="neighbors">Neighbors of <b>${word}</b>: ` +
+                data.neighbors.map(n => `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`).join(" ") + `</div>`;
+            refreshNeighborColors();
+        }
+
+        function refreshNeighborColors() {
+            document.querySelectorAll(".neighbor").forEach(neighbor => {
+                let word = neighbor.textContent;
+                neighbor.className = "neighbor " + (guesses.some(g => g.word === word) ? "guessed" : "not-guessed");
+            });
+        }
+
+        document.getElementById("guessInput").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                makeGuess();
+            }
+        });
+
+        loadState();
+    </script>
+</body>
+</html>
