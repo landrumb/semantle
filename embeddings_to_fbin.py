@@ -4,6 +4,7 @@ import numpy as np
 import sys
 from pathlib import Path
 import subprocess
+import re
 
 from utils import numpy_to_fbin
 
@@ -11,23 +12,35 @@ def words_to_file(words, file_path):
     with open(file_path, "w") as file:
         for word in words:
             file.write(word + "\n")
+            
+def is_lowercase_word(word: str) -> bool:
+    """returns true if a word consists only of lowercase letters and underscores"""
+    return re.match("^[a-z_]+$", word) is not None
     
     
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python embeddings_to_fbin.py <gensim embedding name> [crop length]")
+        print("Usage: python embeddings_to_fbin.py <gensim embedding name> [crop length] [--lowercase_only]")
         sys.exit(1)
         
     embeddings = sys.argv[1]
     
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2].isdigit():
         crop_length = int(sys.argv[2])
     else:
         crop_length = None
+        
+    if "--lowercase_only" in sys.argv:
+        lowercase = True
+    else:
+        lowercase = False
     
     download_dir = Path(f"data/{embeddings}")
     if crop_length is not None:
-        download_dir = Path(f"data/{embeddings}_{crop_length}")
+        download_dir = download_dir.with_name(f"{download_dir.name}_{crop_length}")
+    if lowercase:
+        download_dir = download_dir.with_name(f"{download_dir.name}_lowercase")
+    
     
     if download_dir.exists():
         print("Embeddings already downloaded, but running again.")
@@ -39,11 +52,18 @@ if __name__ == "__main__":
     vectors = model.vectors
     vocab = model.index_to_key
     
+    # crop then lowercase; not necessarily the best order
     if crop_length is not None:
         print(f"Cropping to {crop_length} words...")
         vectors = vectors[:crop_length]
         vocab = vocab[:crop_length]
     
+    if lowercase:
+        print("Filtering to lowercase words...")
+        lowercase_indices = [i for i, word in enumerate(vocab) if is_lowercase_word(word)]
+        vectors = vectors[lowercase_indices]
+        vocab = [vocab[i] for i in lowercase_indices]
+        
     # normalize vectors
     vectors /= np.linalg.norm(vectors, axis=1)[:, None]
     
@@ -72,7 +92,7 @@ if __name__ == "__main__":
                     "-base_path", download_dir / "base.fbin",
                     "-query_path", download_dir / "query.fbin",
                     "-gt_path", download_dir / "GT",
-                    "-k", "1000",
+                    "-k", "100",
                     "-dist_func", "mips",
                     "-data_type", "float"])
     
