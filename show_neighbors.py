@@ -14,7 +14,7 @@ graph_type = sys.argv[2]
 
 data_dir = Path(f"data/{embeddings}")
 
-word_to_idx, idx_to_word = read_vocab(data_dir)
+word_to_idx, idx_to_word = read_vocab(data_dir / "vocab.txt")
         
 graph = graph_file_to_list_of_lists(data_dir / "outputs" / graph_type)
         

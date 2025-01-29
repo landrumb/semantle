@@ -40,7 +40,7 @@ def read_vocab(vocab_dir):
     word_to_idx = {}
     idx_to_word = []
     
-    with open(vocab_dir / "vocab.txt") as file:
+    with open(vocab_dir) as file:
         for idx, line in enumerate(file):
             word = line.strip()
             word_to_idx[word] = idx
