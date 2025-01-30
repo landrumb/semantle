@@ -67,5 +67,9 @@ def get_neighbors():
     neighbors = [vocab[i] for i in graph[word_to_idx[word]]]
     return jsonify({"neighbors": neighbors})
 
+@app.route("/healthcheck", methods=["GET"])
+def healthcheck():
+    return "healthy"
+
 if __name__ == "__main__":
     app.run(debug=True)
