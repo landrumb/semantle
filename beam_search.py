@@ -7,7 +7,7 @@ def dist(a, b):
     """negative inner product, but this could be changed"""
     return -np.dot(a, b)
 
-def beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query : int) -> Tuple[List[int], List[int]]:
+def beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query : int, limit : int = 1000) -> Tuple[List[int], List[int]]:
     """standard beam search with no limit; terminates when the end node is reached
     
     In a connected graph, guaranteed to terminate eventually"""
@@ -15,7 +15,7 @@ def beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query
     beam = [(dist(vectors[start], vectors[query]))]
     compared = []
     visited = []
-    while beam:
+    while beam and len(visited) < limit:
         # get the best element
         _, best = beam.pop(0)
         visited.append(best)
@@ -32,13 +32,13 @@ def beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query
         
     return visited, compared # this should probably never be reached
         
-def eager_beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query : int) -> Tuple[List[int], List[int]]:
+def eager_beam_search(graph : List[List[int]], vectors: np.ndarray, start : int, query : int, limit : int = 1000) -> Tuple[List[int], List[int]]:
     """beam search which stops going through the neighbors of a point when something better is found"""
     # beam elements are dist, index
-    beam = [(dist(vectors[start], vectors[query]))]
+    beam = [(dist(vectors[start], vectors[query]), start)]
     compared = []
     visited = []
-    while beam:
+    while beam and len(visited) < limit:
         # get the best element
         best_dist, best = beam.pop(0)
         # if the best element is the query, return the path
