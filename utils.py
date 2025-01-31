@@ -32,6 +32,26 @@ def graph_file_to_list_of_lists(graph_file):
         
         return out_neighborhoods
     
+def list_of_lists_to_graph_file(graph, graph_file):
+    """writes a list of lists representing out neighborhoods to a parlay graph file"""
+    with open(graph_file, "wb") as f:
+        num_points = len(graph)
+        max_degree = max(len(neighbors) for neighbors in graph)
+        np.array([num_points, max_degree], dtype=np.int32).tofile(f)
+        
+        degrees = np.array([len(neighbors) for neighbors in graph], dtype=np.int32)
+        degrees.tofile(f)
+        
+        for neighbors in graph:
+            np.array(neighbors, dtype=np.int32).tofile(f)
+            
+def sort_neighbors_by_distance(graph, vectors):
+    """sorts the neighbors of each point by the length of the edge inplace"""
+    for idx, neighbors in enumerate(graph):
+        lengths = -np.dot(vectors[neighbors], vectors[idx])
+        graph[idx] = [neighbor for _, neighbor in sorted(zip(lengths, neighbors))]
+        
+    
 def read_vocab(vocab_dir):
     """returns a word_to_idx dict and idx_to_word list from a vocab directory"""
     if type(vocab_dir) == str:
