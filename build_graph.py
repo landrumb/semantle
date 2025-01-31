@@ -108,3 +108,19 @@ if not log_file.exists():
         
 with open(log_file, "a") as f:
     f.write(f"{np.mean(visited_counts)},{np.mean(compared_counts)},{','.join(str(value) for value in VAMANA_PARAMS.values())}\n")
+    
+# writing bfs distance of every node from the start node
+distances = [np.inf] * len(graph)
+distances[0] = 0
+
+queue = [0]
+while queue:
+    node = queue.pop(0)
+    for neighbor in graph[node]:
+        if distances[neighbor] == np.inf:
+            distances[neighbor] = distances[node] + 1
+            queue.append(neighbor)
+            
+with open(data_dir / "outputs" / f"{graph_type}_distances.txt", "w") as f:
+    for distance in distances:
+        f.write(f"{distance}\n")
