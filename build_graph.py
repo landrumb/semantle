@@ -11,9 +11,9 @@ from tqdm import tqdm
 GRAPH_TYPES = ["pynndescent", "vamana", "hcnng"]
 
 VAMANA_PARAMS = {
-    "R": 8,
-    "L": 75,
-    "alpha": .99,
+    "R": 16,
+    "L": 130,
+    "alpha": 1.03,
     "two_pass": True
 }
 
@@ -89,7 +89,7 @@ compared_counts = []
 # compared_counts = []
 
 print("beam search:")
-for idx in tqdm(query_indices[:1000]):
+for idx in tqdm(query_indices[:4000]):
     visited, compared = eager_beam_search(graph, vectors, 0, idx)
     visited_counts.append(len(visited))
     compared_counts.append(len(compared))
