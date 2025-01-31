@@ -21,6 +21,10 @@ word_to_idx, vocab = read_vocab(data_dir / "vocab.txt")
 
 print("loading graph...")
 graph = graph_file_to_list_of_lists(data_dir / "outputs" / "vamana")
+bfs_distances = []
+with open(data_dir / "outputs" / "vamana_distances.txt") as f:
+    for line in f:
+        bfs_distances.append(int(line))
 
 @app.route("/get_vocab", methods=["GET"])
 def get_vocab():
@@ -29,16 +33,20 @@ def get_vocab():
 
 @app.route("/similarity", methods=["POST"])
 def get_similarity():
-    """returns the similarity between two words"""
+    """returns the pairwise similarities between two sets of words"""
     data = request.json
-    word1 = data.get("word1", "").lower()
-    word2 = data.get("word2", "").lower()
+    word1 = data.get("word1", [])
+    word2 = data.get("word2", [])
 
-    if word1 not in vocab or word2 not in vocab:
-        return jsonify({"error": "one or both words not in vocabulary"}), 400
+    if any(word not in vocab for word in word1 + word2):
+        return jsonify({"error": "at least one word not in vocabulary"}), 400
 
-    similarity = float(np.dot(vectors[word_to_idx[word1]], vectors[word_to_idx[word2]]))
-    return jsonify({"similarity": similarity})
+    word1_indices = [word_to_idx[word] for word in word1]
+    word2_indices = [word_to_idx[word] for word in word2]
+    similarity = np.dot(vectors[word1_indices], vectors[word2_indices].T)
+    similarity = [list(row) for row in similarity]
+    return jsonify({"similarities": similarity})
+    
 
 @app.route("/top_k", methods=["POST"])
 def get_top_k():

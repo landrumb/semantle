@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Vamana Semantle</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; }
         input, button { padding: 10px; margin: 5px; }
@@ -17,7 +16,7 @@
     </style>
 </head>
 <body>
-    <h1>Semantle Game</h1>
+    <h1>Search Graph Semantle</h1>
     <button onclick="startGame()">Start New Game</button>
     <input type="text" id="guessInput" placeholder="Enter a word">
     <button onclick="makeGuess()">Guess</button>
@@ -82,14 +81,14 @@
                 let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word1: targetWord, word2: guessWord })
+                    body: JSON.stringify({ word1: [targetWord], word2: [guessWord] })
                 });
                 let simData = await simRes.json();
                 if (simData.error) {
                     alert(simData.error);
                     return;
                 }
-                similarity = simData.similarity;
+                similarity = simData.similarities[0][0]; 
 
                 let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
                     method: "POST",
@@ -193,36 +192,43 @@
             refreshNeighborColors();
         }
 
-        // Prefetch similarity info for each neighbor in the background
         async function prefetchNeighborSimilarities(neighborList) {
-            for (let n of neighborList) {
-                if (!guessDataCache[n]) {
-                    // Fire off requests in parallel, no need to await each before the next
-                    (async () => {
-                        try {
-                            let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ word1: targetWord, word2: n })
-                            });
-                            let simData = await simRes.json();
-                            if (simData.error) return;
-
-                            let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ word: n, k: 1000 })
-                            });
-                            let topKData = await topKRes.json();
-                            let rank = topKData.top_words.indexOf(n);
-
-                            guessDataCache[n] = { similarity: simData.similarity, rank };
-                            saveState();
-                        } catch (e) {
-                            // swallow
-                        }
-                    })();
-                }
+            // Filter out neighbors that have already been fetched
+            let newNeighbors = neighborList.filter(n => !guessDataCache[n]);
+        
+            if (newNeighbors.length === 0) return;
+        
+            try {
+                let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word1: [targetWord], word2: newNeighbors })
+                });
+        
+                let simData = await simRes.json();
+                if (simData.error) return;
+        
+                // Process the similarity matrix (1 row, multiple columns)
+                let similarities = simData.similarities[0];
+        
+                // Fetch ranks in one batch
+                let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ word: newNeighbors, k: 1000 })
+                });
+        
+                let topKData = await topKRes.json();
+        
+                // Store results in cache
+                newNeighbors.forEach((word, idx) => {
+                    let rank = topKData.top_words.indexOf(word);
+                    guessDataCache[word] = { similarity: similarities[idx], rank };
+                });
+        
+                saveState();
+            } catch (e) {
+                console.error("Error prefetching similarities:", e);
             }
         }
 
