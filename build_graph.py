@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import numpy as np
 
-from utils import graph_file_to_list_of_lists
+from utils import graph_file_to_list_of_lists, read_vocab, fbin_to_numpy
 
 GRAPH_TYPES = ["pynndescent", "vamana", "hcnng"]
 
@@ -57,3 +57,21 @@ print("neighbor count distribution:")
 percentiles = [0, 25, 50, 75, 90, 95, 99, 100]
 for p in percentiles:
     print(f"{p}%: {np.percentile([len(neighbors) for neighbors in graph], p)}")
+    
+vocab = read_vocab(data_dir / "vocab.txt")
+query_vocab = read_vocab(data_dir / "query.txt")
+
+query_indices = [vocab.index(word) for word in query_vocab]
+
+vectors = fbin_to_numpy(data_dir / "base.fbin")
+
+visited_counts = []
+compared_counts = []
+
+for idx in query_indices:
+    visited, compared = wp.eager_beam_search(graph, vectors, 0, idx)
+    visited_counts.append(len(visited))
+    compared_counts.append(len(compared))
+
+print(f"average visited: {np.mean(visited_counts)}")
+print(f"average compared: {np.mean(compared_counts)}")
