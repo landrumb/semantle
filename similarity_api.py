@@ -44,7 +44,7 @@ def get_similarity():
     word1_indices = [word_to_idx[word] for word in word1]
     word2_indices = [word_to_idx[word] for word in word2]
     similarity = np.dot(vectors[word1_indices], vectors[word2_indices].T)
-    similarity = [list(row) for row in similarity]
+    similarity = [[float(x) for x in row] for row in similarity]
     return jsonify({"similarities": similarity})
     
 
