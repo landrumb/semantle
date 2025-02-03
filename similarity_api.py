@@ -36,7 +36,7 @@ def get_vocab():
     """returns the vocabulary list to the client so it can select a target word"""
     return jsonify({"vocab": vocab})
 
-@app.route("/get_vocab_with_distances", methods=["GET"])
+@app.route("/get_vocab_and_distances", methods=["GET"])
 def get_vocab_with_distances():
     """returns the vocabulary list with bfs distances to the start node"""
     return jsonify({"vocab": vocab, "bfs_distances": bfs_distances})

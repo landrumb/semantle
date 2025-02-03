@@ -31,6 +31,8 @@
 
     <script>
         let targetWord = "";
+        let vocab = [];
+        let bfs_distances = [];
         let guesses = [];
         // Cache for storing similarity data: guessDataCache[word] = { similarity, rank }
         let guessDataCache = {};
@@ -57,9 +59,10 @@
         }
 
         async function startGame() {
-            let res = await fetch(`${window.API_BASE_URL}/get_vocab`);
+            let res = await fetch(`${window.API_BASE_URL}/get_vocab_and_distances`);
             let data = await res.json();
-            let vocab = data.vocab;
+            vocab = data.vocab;
+            bfs_distances = data.bfs_distances;
             targetWord = vocab[Math.floor(Math.random() * vocab.length)];
             guesses = [];
             guessDataCache = {};
