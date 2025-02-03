@@ -191,9 +191,10 @@
         }
 
         function renderNeighbors(word, neighborList) {
+            let steps = bfs_distances[vocab.indexOf(word)];
             // Render immediately
             document.getElementById("neighbors").innerHTML =
-                `<div class="neighbors">Neighbors of <b>${word}</b>: ` +
+                `<div class="neighbors">Neighbors of <b>${word}</b> (level ${steps}): ` +
                 neighborList.map(n => `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`).join(" ") +
                 `</div>`;
             refreshNeighborColors();
