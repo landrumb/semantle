@@ -1,260 +1,279 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        input, button { padding: 10px; margin: 5px; }
-        .guess { margin: 10px 0; cursor: pointer; color: black; text-decoration: underline; }
-        .latest-guess { font-weight: bold; color: red; }
-        .highlight-container { background-color: lightgray; padding: 10px; margin: 10px auto; display: inline-block; }
-        .neighbors { margin-top: 10px; }
-        .neighbor { cursor: pointer; text-decoration: underline; display: inline-block; margin: 5px; }
-        .neighbor.guessed { color: red; }
-        .neighbor.not-guessed { color: green; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    input, button { padding: 10px; margin: 5px; }
+    .guess { margin: 10px 0; cursor: pointer; text-decoration: underline; color: black; }
+    .highlight-container { background-color: lightgray; padding: 10px; margin: 10px auto; display: inline-block; }
+    .neighbors { margin-top: 10px; }
+    .neighbor { cursor: pointer; text-decoration: underline; display: inline-block; margin: 5px; }
+    .neighbor.guessed { color: red; }
+    .neighbor.not-guessed { color: green; }
+  </style>
 </head>
 <body>
-    <h1>Search Graph Semantle</h1>
-    <button onclick="startGame()">Start New Game</button>
-    <input type="text" id="guessInput" placeholder="Enter a word">
-    <button onclick="makeGuess()">Guess</button>
-    
-    <div id="neighbors"></div>
-    <div id="highlightedGuesses"></div>
-    <div id="guesses"></div>
+  <h1>Search Graph Semantle</h1>
+  <div id="topk_info"></div>
+  <button onclick="startGame()">Start New Game</button>
+  <input type="text" id="guessInput" placeholder="Enter a word" />
+  <button onclick="makeGuess()">Guess</button>
+  <div id="neighbors"></div>
+  <div id="highlightedGuesses"></div>
+  <div id="guesses"></div>
 
-    <script>
-        window.API_BASE_URL = "https://semantle-graph.onrender.com";
-    </script>
+  <script>
+    // Pick your API base URL (only one should be active)
+    // window.API_BASE_URL = "https://semantle-graph.onrender.com";
+    window.API_BASE_URL = "http://127.0.0.1:8000";
 
-    <script>
-        let targetWord = "";
-        let vocab = [];
-        let bfs_distances = [];
-        let guesses = [];
-        // Cache for storing similarity data: guessDataCache[word] = { similarity, rank }
-        let guessDataCache = {};
-        // Cache for storing neighbor lists: neighborsCache[word] = [neighbor1, neighbor2, ...]
-        let neighborsCache = {};
+    let targetWord = "";
+    let vocab = [];
+    let bfs_distances = [];
+    let top_k = [];
+    let guesses = [];
+    // Cache for similarity: { word: { similarity, rank } }
+    let guessDataCache = {};
+    // Cache for neighbors: { word: [neighbors] }
+    let neighborsCache = {};
 
-        function saveState() {
-            localStorage.setItem("targetWord", targetWord);
-            localStorage.setItem("guesses", JSON.stringify(guesses));
-            localStorage.setItem("guessDataCache", JSON.stringify(guessDataCache));
-            localStorage.setItem("neighborsCache", JSON.stringify(neighborsCache));
-        }
+    function saveState() {
+      localStorage.setItem("targetWord", targetWord);
+      localStorage.setItem("guesses", JSON.stringify(guesses));
+      localStorage.setItem("guessDataCache", JSON.stringify(guessDataCache));
+      localStorage.setItem("neighborsCache", JSON.stringify(neighborsCache));
+      localStorage.setItem("vocab", JSON.stringify(vocab));
+      localStorage.setItem("bfs_distances", JSON.stringify(bfs_distances));
+      localStorage.setItem("top_k", JSON.stringify(top_k));
+    }
 
-        function loadState() {
-            targetWord = localStorage.getItem("targetWord") || "";
-            guesses = JSON.parse(localStorage.getItem("guesses")) || [];
-            guessDataCache = JSON.parse(localStorage.getItem("guessDataCache")) || {};
-            neighborsCache = JSON.parse(localStorage.getItem("neighborsCache")) || {};
-            if (!targetWord) {
-                startGame();
-            } else {
-                renderGuesses();
-            }
-        }
+    function loadState() {
+      targetWord = localStorage.getItem("targetWord") || "";
+      guesses = JSON.parse(localStorage.getItem("guesses")) || [];
+      guessDataCache = JSON.parse(localStorage.getItem("guessDataCache")) || {};
+      neighborsCache = JSON.parse(localStorage.getItem("neighborsCache")) || {};
+      if (!targetWord) {
+        startGame();
+      } else {
+        vocab = JSON.parse(localStorage.getItem("vocab")) || [];
+        bfs_distances = JSON.parse(localStorage.getItem("bfs_distances")) || [];
+        top_k = JSON.parse(localStorage.getItem("top_k")) || [];
+        renderGuesses();
+      }
+    }
 
-        async function startGame() {
-            let res = await fetch(`${window.API_BASE_URL}/get_vocab_and_distances`);
-            let data = await res.json();
-            vocab = data.vocab;
-            bfs_distances = data.bfs_distances;
-            targetWord = vocab[Math.floor(Math.random() * vocab.length)];
-            guesses = [];
-            guessDataCache = {};
-            neighborsCache = {};
-            saveState();
-            document.getElementById("guesses").innerHTML = "";
-            document.getElementById("highlightedGuesses").innerHTML = "";
-            document.getElementById("neighbors").innerHTML = "";
-            alert("New game started! A word has been chosen.");
-        }
+    async function startGame() {
+      try {
+        // Load vocab and distances.
+        let res = await fetch(`${window.API_BASE_URL}/get_vocab_and_distances`);
+        let data = await res.json();
+        vocab = data.vocab;
+        bfs_distances = data.bfs_distances;
+        // Pick a random target.
+        targetWord = vocab[Math.floor(Math.random() * vocab.length)];
+        guesses = [];
+        guessDataCache = {};
+        neighborsCache = {};
 
-        async function makeGuess(word = null) {
-            let guessWord = word || document.getElementById("guessInput").value.toLowerCase();
-            if (!guessWord) return alert("Enter a word!");
-            if (guesses.some(g => g.word === guessWord)) return alert("You already guessed this word!");
-
-            // If in cache, skip re-fetch
-            let similarity, rank;
-            if (guessDataCache[guessWord]) {
-                similarity = guessDataCache[guessWord].similarity;
-                rank = guessDataCache[guessWord].rank;
-            } else {
-                let simRes = await fetch(`${window.API_BASE_URL}/similarity`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word1: [targetWord], word2: [guessWord] })
-                });
-                let simData = await simRes.json();
-                if (simData.error) {
-                    alert(simData.error);
-                    return;
-                }
-                similarity = simData.similarities[0][0]; 
-
-                let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word: guessWord, k: 1000 })
-                });
-                let topKData = await topKRes.json();
-                rank = topKData.top_words.indexOf(guessWord);
-
-                guessDataCache[guessWord] = { similarity, rank };
-            }
-
-            guesses.push({ word: guessWord, similarity, rank });
-            guesses.sort((a, b) => b.similarity - a.similarity);
-            saveState();
-            renderGuesses();
-            refreshNeighborColors();
-
-            if (guessWord === targetWord) alert(`🎉 You guessed the word! It was "${targetWord}"`);
-
-            // Prefetch neighbors in the background (for faster future display)
-            prefetchNeighbors(guessWord);
-        }
-
-        function renderGuesses() {
-            let topGuesses = guesses.filter(g => g.rank > 0 && g.rank <= 1000);
-            let otherGuesses = guesses.filter(g => g.rank === 0 || g.rank > 1000);
-            
-            let highlightedGuesses = topGuesses.length > 0
-                ? `<div class="highlight-container">` +
-                  topGuesses.map((g, i) =>
-                    `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)} (Rank: ${g.rank})</div>`
-                  ).join("") +
-                  `</div>`
-                : "";
-
-            let otherGuessesHtml = otherGuesses.map((g, i) =>
-                `<div class="guess" onclick="fetchNeighbors('${g.word}')">${i + 1 + topGuesses.length}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)}</div>`
-            ).join("");
-            
-            document.getElementById("highlightedGuesses").innerHTML = highlightedGuesses;
-            document.getElementById("guesses").innerHTML = otherGuessesHtml;
-        }
-
-        // Fetch neighbors in the background, store them in neighborsCache
-        async function prefetchNeighbors(word) {
-            // If we already have neighbors for this word, skip
-            if (neighborsCache[word]) return;
-            try {
-                let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word })
-                });
-                let data = await res.json();
-                if (!data.error) {
-                    neighborsCache[word] = data.neighbors;
-                    saveState();
-                }
-            } catch (e) {
-                // ignore
-            }
-        }
-
-        // Show neighbors in UI, then prefetch their similarities
-        async function fetchNeighbors(word) {
-            // If neighbors already cached, render immediately
-            if (neighborsCache[word]) {
-                renderNeighbors(word, neighborsCache[word]);
-                // Prefetch similarities in background
-                prefetchNeighborSimilarities(neighborsCache[word]);
-            } else {
-                // Otherwise, fetch fresh neighbors, show them, then prefetch similarities
-                try {
-                    let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ word })
-                    });
-                    let data = await res.json();
-                    if (data.error) {
-                        alert(data.error);
-                        return;
-                    }
-                    neighborsCache[word] = data.neighbors;
-                    renderNeighbors(word, data.neighbors);
-                    saveState();
-                    prefetchNeighborSimilarities(data.neighbors);
-                } catch (e) {
-                    alert("Error fetching neighbors: " + e);
-                }
-            }
-        }
-
-        function renderNeighbors(word, neighborList) {
-            let steps = bfs_distances[vocab.indexOf(word)];
-            // Render immediately
-            document.getElementById("neighbors").innerHTML =
-                `<div class="neighbors">Neighbors of <b>${word}</b> (level ${steps}): ` +
-                neighborList.map(n => `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`).join(" ") +
-                `</div>`;
-            refreshNeighborColors();
-        }
-
-        async function prefetchNeighborSimilarities(neighborList) {
-            // Filter out neighbors that have already been fetched
-            let newNeighbors = neighborList.filter(n => !guessDataCache[n]);
-        
-            if (newNeighbors.length === 0) return;
-        
-            try {
-                let simRes = await fetch(`${window.API_BASE_URL}/similarity`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word1: [targetWord], word2: newNeighbors })
-                });
-        
-                let simData = await simRes.json();
-                if (simData.error) return;
-        
-                // Process the similarity matrix (1 row, multiple columns)
-                let similarities = simData.similarities[0];
-        
-                // Fetch ranks in one batch
-                let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word: newNeighbors, k: 1000 })
-                });
-        
-                let topKData = await topKRes.json();
-        
-                // Store results in cache
-                newNeighbors.forEach((word, idx) => {
-                    let rank = topKData.top_words.indexOf(word);
-                    guessDataCache[word] = { similarity: similarities[idx], rank };
-                });
-        
-                saveState();
-            } catch (e) {
-                console.error("Error prefetching similarities:", e);
-            }
-        }
-
-        function refreshNeighborColors() {
-            document.querySelectorAll(".neighbor").forEach(neighbor => {
-                let w = neighbor.textContent;
-                neighbor.className = "neighbor " + (guesses.some(g => g.word === w) ? "guessed" : "not-guessed");
-            });
-        }
-
-        document.getElementById("guessInput").addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                makeGuess();
-            }
+        // Get top-1000 ranking for target.
+        let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word: targetWord, k: 1001 })
         });
+        let topKData = await topKRes.json();
+        top_k = topKData.top_words;
 
-        loadState();
-    </script>
+        // Prefetch a few benchmark similarities if available.
+        let prefetchWords = [];
+        if (top_k.length > 1) prefetchWords.push(top_k[1]);
+        if (top_k.length > 100) prefetchWords.push(top_k[100]);
+        if (top_k.length > 1000) prefetchWords.push(top_k[1000]);
+        await prefetchSimilarities(prefetchWords);
+
+        saveState();
+        document.getElementById("guesses").innerHTML = "";
+        document.getElementById("highlightedGuesses").innerHTML = "";
+        document.getElementById("neighbors").innerHTML = "";
+        document.getElementById("topk_info").innerHTML = `
+          Most similar: ${guessDataCache[top_k[1]] ? guessDataCache[top_k[1]].similarity.toFixed(4) : 'N/A'}, 
+          100th: ${guessDataCache[top_k[100]] ? guessDataCache[top_k[100]].similarity.toFixed(4) : 'N/A'}, 
+          1000th: ${guessDataCache[top_k[1000]] ? guessDataCache[top_k[1000]].similarity.toFixed(4) : 'N/A'}
+        `;
+        alert("New game started! A word has been chosen.");
+      } catch (e) {
+        alert("Error starting game: " + e);
+      }
+    }
+
+    async function makeGuess(word = null) {
+      let guessWord = word || document.getElementById("guessInput").value.toLowerCase().trim();
+      if (!guessWord) return alert("Enter a word!");
+      if (guesses.some(g => g.word === guessWord)) return alert("You already guessed this word!");
+
+      let similarity, rank;
+      if (guessDataCache[guessWord]) {
+        similarity = guessDataCache[guessWord].similarity;
+        rank = guessDataCache[guessWord].rank;
+      } else {
+        try {
+          // Get similarity between target and guess.
+          let simRes = await fetch(`${window.API_BASE_URL}/similarity`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ word1: [targetWord], word2: [guessWord] })
+          });
+          let simData = await simRes.json();
+          if (simData.error) return alert(simData.error);
+          similarity = simData.similarities[0][0];
+
+          // Get ranking of the guess.
+          let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ word: guessWord, k: 1000 })
+          });
+          let topKData = await topKRes.json();
+          rank = topKData.top_words.indexOf(guessWord);
+          guessDataCache[guessWord] = { similarity, rank };
+        } catch (e) {
+          return alert("Error making guess: " + e);
+        }
+      }
+
+      guesses.push({ word: guessWord, similarity, rank });
+      // Order guesses by descending similarity.
+      guesses.sort((a, b) => b.similarity - a.similarity);
+      saveState();
+      renderGuesses();
+      refreshNeighborColors();
+
+      if (guessWord === targetWord) {
+        alert(`🎉 You guessed the word! It was "${targetWord}"`);
+      }
+      // Prefetch its neighbors.
+      prefetchNeighbors(guessWord);
+    }
+
+    // Group guesses using the cached rank.
+    function renderGuesses() {
+      // Top guesses: rank between 1 and 1000 (excluding 0 which is the target).
+      let topGuesses = guesses.filter(g => g.rank > 0 && g.rank <= 1000);
+      let otherGuesses = guesses.filter(g => g.rank <= 0 || g.rank > 1000);
+      let highlightedHtml = topGuesses.length
+        ? `<div class="highlight-container">` +
+          topGuesses.map((g, i) =>
+            `<div class="guess" onclick="fetchNeighbors('${g.word}')">
+              ${i + 1}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)} (Rank: ${g.rank})
+            </div>`
+          ).join("") +
+          `</div>`
+        : "";
+      let otherHtml = otherGuesses.map((g, i) =>
+        `<div class="guess" onclick="fetchNeighbors('${g.word}')">
+          ${i + 1 + topGuesses.length}. <b>${g.word}</b> - Similarity: ${g.similarity.toFixed(4)}
+        </div>`
+      ).join("");
+
+      document.getElementById("highlightedGuesses").innerHTML = highlightedHtml;
+      document.getElementById("guesses").innerHTML = otherHtml;
+    }
+
+    // Cache neighbors to speed up future displays.
+    async function prefetchNeighbors(word) {
+      if (neighborsCache[word]) return;
+      try {
+        let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word })
+        });
+        let data = await res.json();
+        if (!data.error) {
+          neighborsCache[word] = data.neighbors;
+          saveState();
+        }
+      } catch (e) {
+        console.error("Error prefetching neighbors:", e);
+      }
+    }
+
+    // Retrieve and display neighbors, then prefetch their similarities.
+    async function fetchNeighbors(word) {
+      if (neighborsCache[word]) {
+        renderNeighbors(word, neighborsCache[word]);
+        prefetchSimilarities(neighborsCache[word]);
+      } else {
+        try {
+          let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ word })
+          });
+          let data = await res.json();
+          if (data.error) return alert(data.error);
+          neighborsCache[word] = data.neighbors;
+          renderNeighbors(word, data.neighbors);
+          saveState();
+          prefetchSimilarities(data.neighbors);
+        } catch (e) {
+          alert("Error fetching neighbors: " + e);
+        }
+      }
+    }
+
+    function renderNeighbors(word, neighborList) {
+      let idx = vocab.indexOf(word);
+      let steps = idx !== -1 ? bfs_distances[idx] : "N/A";
+      let html = `<div class="neighbors">Neighbors of <b>${word}</b> (level ${steps}): `;
+      html += neighborList.map(n =>
+        `<span class="neighbor" id="neighbor-${n}" onclick="makeGuess('${n}')">${n}</span>`
+      ).join(" ");
+      html += `</div>`;
+      document.getElementById("neighbors").innerHTML = html;
+      refreshNeighborColors();
+    }
+
+    async function prefetchSimilarities(wordList) {
+      if (!Array.isArray(wordList) || wordList.length === 0) return;
+      let newWords = wordList.filter(n => !guessDataCache[n]);
+      if (newWords.length === 0) return;
+      try {
+        let res = await fetch(`${window.API_BASE_URL}/similarity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word1: [targetWord], word2: newWords })
+        });
+        let data = await res.json();
+        if (data.error) return;
+        let sims = data.similarities[0];
+        newWords.forEach((n, i) => {
+          let r = top_k.indexOf(n);
+          guessDataCache[n] = { similarity: sims[i], rank: r };
+        });
+        saveState();
+      } catch (e) {
+        console.error("Error prefetching similarities:", e);
+      }
+    }
+
+    function refreshNeighborColors() {
+      document.querySelectorAll(".neighbor").forEach(neighbor => {
+        let w = neighbor.textContent;
+        neighbor.className = "neighbor " + (guesses.some(g => g.word === w) ? "guessed" : "not-guessed");
+      });
+    }
+
+    document.getElementById("guessInput").addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        makeGuess();
+      }
+    });
+
+    loadState();
+  </script>
 </body>
 </html>
