@@ -64,6 +64,16 @@ if __name__ == "__main__":
         vectors = vectors[lowercase_indices]
         vocab = [vocab[i] for i in lowercase_indices]
         
+    # move the exclusion list words to the end of the list
+    with open("exclusion_list.txt") as f:
+        exclusion_list = set(f.read().split())
+        
+    exclusion_indices = [i for i, word in enumerate(vocab) if word in exclusion_list]
+    permuted_indices = np.concatenate([np.delete(np.arange(len(vocab)), exclusion_indices), exclusion_indices])
+    
+    vectors = vectors[permuted_indices]
+    vocab = [vocab[i] for i in permuted_indices]
+        
     # normalize vectors
     vectors /= np.linalg.norm(vectors, axis=1)[:, None]
     
