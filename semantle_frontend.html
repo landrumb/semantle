@@ -26,6 +26,10 @@
     <div id="guesses"></div>
 
     <script>
+        window.API_BASE_URL = "<%= process.env.API_BASE_URL %>" || "https://semantle-graph.onrender.com";
+    </script>
+
+    <script>
         let targetWord = "";
         let guesses = [];
         // Cache for storing similarity data: guessDataCache[word] = { similarity, rank }
@@ -53,7 +57,7 @@
         }
 
         async function startGame() {
-            let res = await fetch("https://semantle-graph.onrender.com/get_vocab");
+            let res = await fetch(`${window.API_BASE_URL}/get_vocab`);
             let data = await res.json();
             let vocab = data.vocab;
             targetWord = vocab[Math.floor(Math.random() * vocab.length)];
@@ -78,7 +82,7 @@
                 similarity = guessDataCache[guessWord].similarity;
                 rank = guessDataCache[guessWord].rank;
             } else {
-                let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
+                let simRes = await fetch(`${window.API_BASE_URL}/similarity`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ word1: [targetWord], word2: [guessWord] })
@@ -90,7 +94,7 @@
                 }
                 similarity = simData.similarities[0][0]; 
 
-                let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
+                let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ word: guessWord, k: 1000 })
@@ -138,7 +142,7 @@
             // If we already have neighbors for this word, skip
             if (neighborsCache[word]) return;
             try {
-                let res = await fetch("https://semantle-graph.onrender.com/neighbors", {
+                let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ word })
@@ -163,7 +167,7 @@
             } else {
                 // Otherwise, fetch fresh neighbors, show them, then prefetch similarities
                 try {
-                    let res = await fetch("https://semantle-graph.onrender.com/neighbors", {
+                    let res = await fetch(`${window.API_BASE_URL}/neighbors`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ word })
@@ -199,7 +203,7 @@
             if (newNeighbors.length === 0) return;
         
             try {
-                let simRes = await fetch("https://semantle-graph.onrender.com/similarity", {
+                let simRes = await fetch(`${window.API_BASE_URL}/similarity`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ word1: [targetWord], word2: newNeighbors })
@@ -212,7 +216,7 @@
                 let similarities = simData.similarities[0];
         
                 // Fetch ranks in one batch
-                let topKRes = await fetch("https://semantle-graph.onrender.com/top_k", {
+                let topKRes = await fetch(`${window.API_BASE_URL}/top_k`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ word: newNeighbors, k: 1000 })
