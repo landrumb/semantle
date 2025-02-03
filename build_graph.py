@@ -121,6 +121,8 @@ while queue:
             distances[neighbor] = distances[node] + 1
             queue.append(neighbor)
             
+distances = [str(distance) if distance != np.inf else "-1" for distance in distances]
+
 with open(data_dir / "outputs" / f"{graph_type}_distances.txt", "w") as f:
-    for distance in distances:
-        f.write(f"{distance}\n")
+    for line in distances:
+        f.write(f"{line}\n")
