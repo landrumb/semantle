@@ -4,6 +4,9 @@ from pathlib import Path
 from utils import fbin_to_numpy, graph_file_to_list_of_lists, read_vocab
 import numpy as np
 import subprocess
+import time
+
+start = time.time()
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})  # enable cross-origin requests
@@ -25,6 +28,8 @@ bfs_distances = []
 with open(data_dir / "outputs" / "vamana_distances.txt") as f:
     for line in f:
         bfs_distances.append(int(line))
+        
+print(f"Loaded in {time.time() - start:.2f} seconds")
 
 @app.route("/get_vocab", methods=["GET"])
 def get_vocab():
