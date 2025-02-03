@@ -36,6 +36,11 @@ def get_vocab():
     """returns the vocabulary list to the client so it can select a target word"""
     return jsonify({"vocab": vocab})
 
+@app.route("/get_vocab_with_distances", methods=["GET"])
+def get_vocab_with_distances():
+    """returns the vocabulary list with bfs distances to the start node"""
+    return jsonify({"vocab": vocab, "bfs_distances": bfs_distances})
+
 @app.route("/similarity", methods=["POST"])
 def get_similarity():
     """returns the pairwise similarities between two sets of words"""
